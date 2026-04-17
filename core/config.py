@@ -75,7 +75,7 @@ class SystemConfig:
     velocity_filter_cutoff_hz: float = 20.0
 
     # Safety limits
-    theta_emergency_deg: float = 10.0
+    theta_emergency_deg: float = 180.0
     position_limit_trolley: float = 48.0
     position_limit_bridge: float = 48.0
     position_limit_hoist_min: float = 12.0
@@ -177,7 +177,7 @@ SPI_CONFIG = {
     'encoders': {'bus': 0, 'mode': 0, 'speed_hz': 500_000,
                  'cs_trolley': 8, 'cs_bridge': 7,
                  'cs_bridge_diag': 12, 'cs_hoist': 16},
-    'imu':      {'bus': 1, 'ce': 0, 'mode': 0, 'speed_hz': 1_000_000},
+    'imu':      {'bus': 1, 'ce': 2, 'mode': 0, 'speed_hz': 1_000_000},
 }
 
 

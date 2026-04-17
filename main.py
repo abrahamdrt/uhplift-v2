@@ -63,10 +63,15 @@ except ImportError:
 PINS = {
     'trolley': {'pul': 22, 'dir': 27, 'ena': 17, 'cs': 8},
     'bridge':  {'pul': 23, 'dir': 24, 'ena': 25, 'cs': 7, 'cs_diag': 12},
-    'hoist':   {'pul': 5,  'dir': 6,  'ena': 13, 'cs': 16},
+    'hoist':   {'pul': 5,  'dir': 6,  'ena': 13, 'cs': 16,
+                'brake': 26},  # NOTE: Cannot use GPIO16 for brake — conflicts
+                               # with hoist encoder CS2. Using GPIO26 instead.
+                               # Verify physical wiring matches this assignment.
 }
 ENC_IPC = {
-    'trolley': 0.000152, 'bridge': 0.000190,
+    'trolley': -0.000152,  # NEGATED: encoder counts west=positive but
+                           # coordinate system requires west=negative, east=positive
+    'bridge': 0.000190,
     'bridge_diag': 0.000190, 'hoist': 0.000118,
 }
 L_HOME = 12.0
@@ -231,6 +236,11 @@ class CraneController:
             self._pi = pigpio.pi()
             if not self._pi.connected:
                 print("[ERROR] pigpiod not running"); return False
+            # Hoist brake GPIO — K4 is wired NC (brake on NC terminal)
+            # HIGH = relay energized = NC opens = no 24V to brake coil = spring ENGAGES brake
+            # LOW  = relay off       = NC closed = 24V to brake coil  = brake RELEASED
+            self._pi.set_mode(PINS['hoist']['brake'], pigpio.OUTPUT)
+            self._pi.write(PINS['hoist']['brake'], 1)  # Start with brake ENGAGED
         else:
             self._pi = None
 
@@ -310,13 +320,23 @@ class CraneController:
     # ── Drives ───────────────────────────────────────────────────────────
 
     def enable_drives(self):
-        print("[ENABLE] All ENA relays...")
+        print("[ENABLE] Drivers hardwired, syncing DIR + releasing brake...")
         for s in [self.stepper_trolley, self.stepper_bridge, self.stepper_hoist]:
             if s: s.enable()
+        # Release hoist brake — K4 wired NC:
+        # LOW = relay off = NC closed = 24V reaches brake coil = brake RELEASED
+        if self._pi and not self.simulation_mode:
+            self._pi.write(PINS['hoist']['brake'], 0)
+            print("[BRAKE] Released (NC closed, 24V to coil)")
         print("[ENABLE] Done")
 
     def disable_drives(self):
-        print("[DISABLE] All drives...")
+        print("[DISABLE] Stopping pulses + engaging brake...")
+        # Engage hoist brake FIRST — K4 wired NC:
+        # HIGH = relay energized = NC opens = no 24V to brake coil = spring ENGAGES brake
+        if self._pi and not self.simulation_mode:
+            self._pi.write(PINS['hoist']['brake'], 1)
+            print("[BRAKE] Engaged (NC open, spring holds)")
         for s in [self.stepper_trolley, self.stepper_bridge, self.stepper_hoist]:
             if s: s.disable()
         self.state.mode = ControlMode.DISABLED

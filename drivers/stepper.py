@@ -139,48 +139,38 @@ class StepperDriver:
         
         self._pi.set_mode(self.config.pul_pin, pigpio.OUTPUT)
         self._pi.set_mode(self.config.dir_pin, pigpio.OUTPUT)
-        self._pi.set_mode(self.config.ena_pin, pigpio.OUTPUT)
+        # ENA pins not used — drivers hardwired to 24V (relay bypassed)
         
-        # Safe initial state (disabled)
         self._pi.write(self.config.pul_pin, 0)
         self._pi.write(self.config.dir_pin, 0)
-        self._pi.write(self.config.ena_pin, 0)
         
         print(f"[STEPPER:{self.config.name}] Initialized via pigpio")
         print(f"  PUL=GPIO{self.config.pul_pin}, DIR=GPIO{self.config.dir_pin}, "
-              f"ENA=GPIO{self.config.ena_pin}")
+              f"ENA=HARDWIRED")
         
         self._initialized = True
         return True
     
     def enable(self):
-        """Enable motor driver.  Blocks for T1 ENA→DIR settle time."""
+        """Enable motor driver. Drivers are hardwired on — just sync DIR state."""
         if self.simulation_mode or self._pi is None:
             self._enabled = True
             return
         
-        self._pi.write(self.config.ena_pin, 0) # active low
-        print(f"[STEPPER:{self.config.name}] ENA asserted, waiting {T1_ENA_DIR_MS}ms...")
-        time.sleep(T1_ENA_DIR_MS / 1000.0)
-        
-        # Sync DIR pin with internal state so the first velocity command
-        # doesn't run in the wrong direction.  initialize() sets DIR=0
-        # but _direction_forward defaults to True — this mismatch caused
-        # the first-move direction glitch.
+        # Drivers already powered (hardwired 24V). Sync DIR pin with
+        # internal state so first velocity command runs correct direction.
         self._direction_forward = True
         self._pi.write(self.config.dir_pin, 1)
         time.sleep(T2_DIR_PUL_US / 1_000_000)  # DIR settle
         
         self._enabled = True
-        print(f"[STEPPER:{self.config.name}] Driver ENABLED")
+        print(f"[STEPPER:{self.config.name}] Driver ENABLED (hardwired)")
     
     def disable(self):
-        """Disable motor driver and stop any active transmission."""
+        """Stop pulse transmission. Drivers remain powered (hardwired)."""
         self._stop_transmission()
-        if self._pi is not None:
-            self._pi.write(self.config.ena_pin, 1) 
         self._enabled = False
-        print(f"[STEPPER:{self.config.name}] Driver DISABLED")
+        print(f"[STEPPER:{self.config.name}] Pulses STOPPED (driver stays powered)")
     
     def close(self):
         """Release all resources."""
