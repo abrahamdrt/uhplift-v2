@@ -48,7 +48,7 @@ from core.reference import ManualModeGenerator
 from core.estimator import (
     DerivativeEstimator, ComplementaryFilter, LowPassFilter
 )
-from drivers.imu import LSM6DS3
+from drivers.imu import MPU6050
 from drivers.stepper import StepperDriver, StepperConfig
 from drivers.joystick import JoystickDriver
 
@@ -203,7 +203,7 @@ class CraneController:
                                                accel_max_g=0.20)
         self.ref_trolley = ManualModeGenerator(v_max=config.trolley.v_target,
                                                accel_max_g=0.20)
-        self.ref_hoist   = ManualModeGenerator(v_max=1.25, accel_max_g=0.001)
+        self.ref_hoist   = ManualModeGenerator(v_max=1.25, accel_max_g=0.10)
 
         # LQR controller (active axis only)
         self.controller = None
@@ -222,11 +222,6 @@ class CraneController:
         self.stepper_hoist = None; self.joystick = None
         self._running = False
         self._enable_last = False; self._mode_last = False; self._reset_last = False
-        # Hoist brake delay — ticks to wait after brake release before sending pulses
-        # At 200Hz: 20 ticks = 100ms, 40 ticks = 200ms
-        self._brake_delay_ticks = 40   # 200ms — adjust if brake is faster/slower
-        self._brake_ticks_remaining = 0
-        self._brake_released = False
         self._csv_file = None; self._csv_writer = None; self._t0 = 0.0
 
     # ── Initialize ───────────────────────────────────────────────────────
@@ -268,8 +263,8 @@ class CraneController:
                 print(f"  [WARN] {n} encoder failed (non-critical)")
 
         # IMU
-        print("[INIT] IMU (SPI1)...")
-        self.imu = LSM6DS3(simulation_mode=self.simulation_mode)
+        print("[INIT] IMU (I2C1, MPU6050)...")
+        self.imu = MPU6050(simulation_mode=self.simulation_mode)
         if not self.imu.initialize():
             if self.active_mode in ("bridge", "trolley"):
                 print("  [CRITICAL] IMU failed"); critical_fail = True
@@ -325,11 +320,14 @@ class CraneController:
     # ── Drives ───────────────────────────────────────────────────────────
 
     def enable_drives(self):
-        print("[ENABLE] Drivers hardwired, syncing DIR...")
+        print("[ENABLE] Drivers hardwired, syncing DIR + releasing brake...")
         for s in [self.stepper_trolley, self.stepper_bridge, self.stepper_hoist]:
             if s: s.enable()
-        # Brake is NOT released here — it releases only when hoist is commanded.
-        # See control_step() hoist section.
+        # Release hoist brake — K4 wired NC:
+        # LOW = relay off = NC closed = 24V reaches brake coil = brake RELEASED
+        if self._pi and not self.simulation_mode:
+            self._pi.write(PINS['hoist']['brake'], 0)
+            print("[BRAKE] Released (NC closed, 24V to coil)")
         print("[ENABLE] Done")
 
     def disable_drives(self):
@@ -484,38 +482,10 @@ class CraneController:
         joy_t = self.joystick.get_trolley_input() if self.joystick else 0.0
         joy_h = self.joystick.get_hoist_input() if self.joystick else 0.0
 
-        # Hoist always manual — brake follows command with delay
-        # K4 wired NC: LOW = relay off = NC closed = 24V to coil = RELEASED
-        #              HIGH = relay on  = NC open  = no 24V      = ENGAGED
+        # Hoist always manual
         vr_h = self.ref_hoist.update(joy_h, dt)
         self.state.v_ref_hoist = vr_h
-
-        if self._pi and not self.simulation_mode:
-            if abs(vr_h) > 0.0:
-                if not self._brake_released:
-                    # First tick hoist is commanded — release brake, start counter
-                    self._pi.write(PINS['hoist']['brake'], 0)
-                    self._brake_released = True
-                    self._brake_ticks_remaining = self._brake_delay_ticks
-                if self._brake_ticks_remaining > 0:
-                    # Still waiting for brake to fully release — hold pulses
-                    self._brake_ticks_remaining -= 1
-                else:
-                    # Brake fully released — allow motion
-                    if self.stepper_hoist:
-                        self.stepper_hoist.set_velocity_continuous(vr_h)
-            else:
-                # No hoist command — engage brake, reset state
-                if self._brake_released:
-                    self._pi.write(PINS['hoist']['brake'], 1)
-                    self._brake_released = False
-                    self._brake_ticks_remaining = 0
-                if self.stepper_hoist:
-                    self.stepper_hoist.set_velocity_continuous(0.0)
-        else:
-            # Simulation mode — no brake logic
-            if self.stepper_hoist:
-                self.stepper_hoist.set_velocity_continuous(vr_h)
+        if self.stepper_hoist: self.stepper_hoist.set_velocity_continuous(vr_h)
 
         # MANUAL
         if self.state.mode == ControlMode.MANUAL:
@@ -575,13 +545,22 @@ class CraneController:
     def check_safety(self):
         if self.state.mode not in (ControlMode.MANUAL, ControlMode.AUTO):
             return True
-        # NOTE: Position limits removed — encoder noise produces spurious
-        # large position readings that would incorrectly trip the fault.
-        # Sway limit retained (IMU-based, independent of encoder).
         tr = self.state.theta_x_raw if self.active_mode == "bridge" else self.state.theta_z_raw
         if abs(tr)*180/math.pi > self.config.theta_emergency_deg:
             print(f"[SAFETY] Sway {abs(tr)*180/math.pi:.1f} deg")
             self.state.fault_code = 2; return False
+        if abs(self.state.x_bridge) > self.config.position_limit_bridge:
+            print(f"[SAFETY] Bridge pos {self.state.x_bridge:.1f}")
+            self.state.fault_code = 3; return False
+        if abs(self.state.x_trolley) > self.config.position_limit_trolley:
+            print(f"[SAFETY] Trolley pos {self.state.x_trolley:.1f}")
+            self.state.fault_code = 4; return False
+        if self.state.L_current < L_HOME - 0.5:
+            print(f"[SAFETY] Hoist high L={self.state.L_current:.1f}")
+            self.state.fault_code = 5; return False
+        if self.state.L_current > L_MAX + 0.5:
+            print(f"[SAFETY] Hoist low L={self.state.L_current:.1f}")
+            self.state.fault_code = 6; return False
         return True
 
     # ── Logging ──────────────────────────────────────────────────────────
@@ -714,7 +693,7 @@ def test_sensors(sim=False):
     bus.close()
 
     print("\n[IMU]:")
-    imu = LSM6DS3(simulation_mode=sim)
+    imu = MPU6050(simulation_mode=sim)
     if imu.initialize():
         imu.calibrate(50, 10)
         for _ in range(10):

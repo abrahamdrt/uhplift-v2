@@ -535,7 +535,7 @@ HOIST_STEPPER = StepperConfig(
     dir_pin=6,
     ena_pin=13,
     steps_per_rev=200,
-    microstepping=4,
+    microstepping=1,       # Driver physically set to 200 pulses/rev (no microstepping)
     gear_ratio=10.0,
     wheel_radius_in=0.75,  # Drum radius [in]
 )

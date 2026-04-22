@@ -104,47 +104,44 @@ def main():
                          ("bridge", CS_BRIDGE), ("bridge_diag", CS_BRIDGE_DIAG)]:
             enc_ok[name] = init_enc(spi_enc, pi, name, cs)
 
-    imu_spi = None
+    imu_bus = None
+    a_off = [0,0,0]; g_off = [0,0,0]
+    IMU_ADDR = 0x68
     if not args.enc_only:
-        print("\n[IMU] SPI1 CE0 Mode 0:")
-        imu_spi = spidev.SpiDev()
-        imu_spi.open(1, 2)
-        imu_spi.mode = 0
-        imu_spi.max_speed_hz = 1_000_000
-
-        who = imu_spi.xfer2([0x0F | 0x80, 0x00])[1]
-        print(f"  WHO_AM_I = 0x{who:02X} {'OK' if who == 0x69 else 'FAIL'}")
-        if who == 0x69:
-            imu_spi.xfer2([0x10, 0x58])  # CTRL1_XL: 208Hz ±4g
-            imu_spi.xfer2([0x11, 0x54])  # CTRL2_G:  208Hz ±500dps
+        print("\n[IMU] MPU6050 I2C1 (0x68):")
+        try:
+            from smbus2 import SMBus as _SMBus
+            imu_bus = _SMBus(1)
+            who = imu_bus.read_byte_data(IMU_ADDR, 0x75)
+            print(f"  WHO_AM_I = 0x{who:02X} {'OK' if who == 0x68 else 'UNEXPECTED'}")
+            # Wake + configure
+            imu_bus.write_byte_data(IMU_ADDR, 0x6B, 0x00)  # Wake
+            imu_bus.write_byte_data(IMU_ADDR, 0x19, 4)     # 200 Hz
+            imu_bus.write_byte_data(IMU_ADDR, 0x1A, 3)     # DLPF 44 Hz
+            imu_bus.write_byte_data(IMU_ADDR, 0x1B, 0x08)  # ±500 dps
+            imu_bus.write_byte_data(IMU_ADDR, 0x1C, 0x00)  # ±2g
             time.sleep(0.05)
             # Quick calibration
             print("  Calibrating (50 samples)...")
             ax_s = [0,0,0]; gx_s = [0,0,0]
+            ASCL = 2.0/32768.0; GSCL = 500.0/32768.0 * math.pi/180
+            def _s16(h, l):
+                v = (h<<8)|l
+                return v-0x10000 if v&0x8000 else v
             for _ in range(50):
-                # Read accel
-                tx = [0x28|0x80]+[0]*6
-                rd = imu_spi.xfer2(tx)
+                d = imu_bus.read_i2c_block_data(IMU_ADDR, 0x3B, 14)
                 for j in range(3):
-                    v = (rd[2*j+2]<<8)|rd[2*j+1]
-                    if v>=32768: v-=65536
-                    ax_s[j] += v * 4.0/32768.0
-                # Read gyro
-                tx = [0x22|0x80]+[0]*6
-                rd = imu_spi.xfer2(tx)
-                for j in range(3):
-                    v = (rd[2*j+2]<<8)|rd[2*j+1]
-                    if v>=32768: v-=65536
-                    gx_s[j] += v * 500.0/32768.0 * math.pi/180
+                    ax_s[j] += _s16(d[j*2], d[j*2+1]) * ASCL
+                    gx_s[j] += _s16(d[8+j*2], d[9+j*2]) * GSCL
                 time.sleep(0.01)
             a_off = [x/50 for x in ax_s]
             g_off = [x/50 for x in gx_s]
             a_off[1] -= 1.0  # Subtract gravity on Y
             print(f"  Accel offset: [{a_off[0]:.4f}, {a_off[1]:.4f}, {a_off[2]:.4f}]")
             print(f"  Gyro offset:  [{g_off[0]:.4f}, {g_off[1]:.4f}, {g_off[2]:.4f}]")
-        else:
-            imu_spi.close(); imu_spi = None
-            print("  IMU not available")
+        except Exception as e:
+            print(f"  IMU error: {e}")
+            imu_bus = None
 
     # ── Joystick (optional) ──────────────────────────────────────────────
     joy = None
@@ -170,7 +167,7 @@ def main():
     header_parts = []
     if spi_enc:
         header_parts.append("  TROLLEY       BRIDGE        HOIST       BR_DIAG")
-    if imu_spi:
+    if imu_bus:
         header_parts.append("   θx(brg)   θz(trl)   gx       gz")
     if joy:
         header_parts.append(" JOY:B T H")
@@ -200,28 +197,20 @@ def main():
             parts.append(f"T:{t_p:+8.3f}  B:{b_p:+8.3f}  "
                         f"H:{h_p:+8.3f}  D:{d_p:+8.3f}")
 
-        if imu_spi:
-            # Accel
-            tx = [0x28|0x80]+[0]*6
-            rd = imu_spi.xfer2(tx)
-            a = [0.0]*3
-            for j in range(3):
-                v = (rd[2*j+2]<<8)|rd[2*j+1]
-                if v>=32768: v-=65536
-                a[j] = v*4.0/32768.0 - a_off[j]
-            # Gyro
-            tx = [0x22|0x80]+[0]*6
-            rd = imu_spi.xfer2(tx)
-            g = [0.0]*3
-            for j in range(3):
-                v = (rd[2*j+2]<<8)|rd[2*j+1]
-                if v>=32768: v-=65536
-                g[j] = v*500.0/32768.0*math.pi/180 - g_off[j]
-
-            tx_deg = math.degrees(math.atan2(a[0], a[1]))  # Bridge sway
-            tz_deg = math.degrees(math.atan2(a[2], a[1]))  # Trolley sway
-            parts.append(f"  θx:{tx_deg:+6.2f}° θz:{tz_deg:+6.2f}° "
-                        f"gx:{g[0]:+.3f} gz:{g[2]:+.3f}")
+        if imu_bus:
+            try:
+                ASCL = 2.0/32768.0; GSCL = 500.0/32768.0 * math.pi/180
+                d = imu_bus.read_i2c_block_data(IMU_ADDR, 0x3B, 14)
+                a = [0.0]*3; g = [0.0]*3
+                for j in range(3):
+                    a[j] = _s16(d[j*2], d[j*2+1]) * ASCL - a_off[j]
+                    g[j] = _s16(d[8+j*2], d[9+j*2]) * GSCL - g_off[j]
+                tx_deg = math.degrees(math.atan2(a[0], a[1]))
+                tz_deg = math.degrees(math.atan2(a[2], a[1]))
+                parts.append(f"  θx:{tx_deg:+6.2f}° θz:{tz_deg:+6.2f}° "
+                            f"gx:{g[0]:+.3f} gz:{g[2]:+.3f}")
+            except Exception:
+                parts.append("  IMU: read error")
 
         if joy:
             try:
@@ -240,7 +229,7 @@ def main():
     # ── Cleanup ──────────────────────────────────────────────────────────
     print(f"\n[DONE] {count} samples")
     if spi_enc: spi_enc.close()
-    if imu_spi: imu_spi.close()
+    if imu_bus: imu_bus.close()
     if joy:
         import pygame; pygame.quit()
     pi.stop()
