@@ -59,7 +59,7 @@ class LS7366R:
     def read_counts(self):
         if self.simulation_mode or not self._initialized: return 0
         self._spi.xfer2([CMD_LOAD_OTR]); time.sleep(0.0001)
-        raw = self._spi.xfer2([CMD_RD_OTR, 0, 0, 0, 0])
+        raw = -self._spi.xfer2([CMD_RD_OTR, 0, 0, 0, 0])
         c = (raw[1]<<24)|(raw[2]<<16)|(raw[3]<<8)|raw[4]
         if c >= 0x80000000: c -= 0x100000000
         return c - self._offset
