@@ -110,22 +110,22 @@ class GainSet:
 
 # Trolley System Gains (m_t = 8.85 lbm)
 TROLLEY_GAINS = {
-    (12.0, 12.0): GainSet(K_vel=0.416508, K_theta=-4.408728, K_theta_dot=0.833212, K_int=-0.868932, m_l=12.0, L=12.0),
-    (12.0, 21.6): GainSet(K_vel=0.362439, K_theta=-5.309683, K_theta_dot=1.117304, K_int=-0.527999, m_l=12.0, L=21.6),
-    (12.0, 31.3): GainSet(K_vel=1.266344, K_theta=-55.396850, K_theta_dot=5.548017, K_int=-1.430010, m_l=12.0, L=31.3),
-    (12.0, 41.0): GainSet(K_vel=1.235986, K_theta=-72.782729, K_theta_dot=10.057725, K_int=-1.430010, m_l=12.0, L=41.0),
-    (20.0, 12.0): GainSet(K_vel=0.503541, K_theta=-2.040418, K_theta_dot=1.764332, K_int=-1.211216, m_l=20.0, L=12.0),
-    (20.0, 21.6): GainSet(K_vel=0.425856, K_theta=-3.038326, K_theta_dot=2.325337, K_int=-0.735984, m_l=20.0, L=21.6),
-    (20.0, 31.3): GainSet(K_vel=0.383899, K_theta=-3.169761, K_theta_dot=2.663714, K_int=-0.527999, m_l=20.0, L=31.3),
-    (20.0, 41.0): GainSet(K_vel=0.390490, K_theta=-4.804739, K_theta_dot=2.951219, K_int=-0.447214, m_l=20.0, L=41.0),
-    (30.0, 12.0): GainSet(K_vel=0.760602, K_theta=-1.754593, K_theta_dot=2.430563, K_int=-1.688328, m_l=30.0, L=12.0),
-    (30.0, 21.6): GainSet(K_vel=0.577953, K_theta=-2.256659, K_theta_dot=3.612170, K_int=-1.025897, m_l=30.0, L=21.6),
-    (30.0, 31.3): GainSet(K_vel=0.462183, K_theta=-1.504810, K_theta_dot=4.749752, K_int=-0.735984, m_l=30.0, L=31.3),
-    (30.0, 41.0): GainSet(K_vel=0.399341, K_theta=2.405183, K_theta_dot=4.653152, K_int=-0.527999, m_l=30.0, L=41.0),
-    (40.0, 12.0): GainSet(K_vel=0.906937, K_theta=2.756381, K_theta_dot=3.002251, K_int=-1.993309, m_l=40.0, L=12.0),
-    (40.0, 21.6): GainSet(K_vel=0.718338, K_theta=2.216566, K_theta_dot=4.178170, K_int=-1.211216, m_l=40.0, L=21.6),
-    (40.0, 31.3): GainSet(K_vel=0.566707, K_theta=3.179175, K_theta_dot=5.557790, K_int=-0.868932, m_l=40.0, L=31.3),
-    (40.0, 41.0): GainSet(K_vel=0.528542, K_theta=-0.089243, K_theta_dot=7.056531, K_int=-0.735984, m_l=40.0, L=41.0),
+    (12.0, 12.0): GainSet(K_vel=0.416508, K_theta=-4.408728, K_theta_dot=0.833212, K_int=-0.10, m_l=12.0, L=12.0),
+    (12.0, 21.6): GainSet(K_vel=0.362439, K_theta=-5.309683, K_theta_dot=1.117304, K_int=-0.10, m_l=12.0, L=21.6),
+    (12.0, 31.3): GainSet(K_vel=1.266344, K_theta=-55.396850, K_theta_dot=5.548017, K_int=-0.10, m_l=12.0, L=31.3),
+    (12.0, 41.0): GainSet(K_vel=1.235986, K_theta=-72.782729, K_theta_dot=10.057725, K_int=-0.10, m_l=12.0, L=41.0),
+    (20.0, 12.0): GainSet(K_vel=0.503541, K_theta=-2.040418, K_theta_dot=1.764332, K_int=-0.10, m_l=20.0, L=12.0),
+    (20.0, 21.6): GainSet(K_vel=0.425856, K_theta=-3.038326, K_theta_dot=2.325337, K_int=-0.10, m_l=20.0, L=21.6),
+    (20.0, 31.3): GainSet(K_vel=0.383899, K_theta=-3.169761, K_theta_dot=2.663714, K_int=-0.10, m_l=20.0, L=31.3),
+    (20.0, 41.0): GainSet(K_vel=0.390490, K_theta=-4.804739, K_theta_dot=2.951219, K_int=-0.10, m_l=20.0, L=41.0),
+    (30.0, 12.0): GainSet(K_vel=0.760602, K_theta=-1.754593, K_theta_dot=2.430563, K_int=-0.10, m_l=30.0, L=12.0),
+    (30.0, 21.6): GainSet(K_vel=0.577953, K_theta=-2.256659, K_theta_dot=3.612170, K_int=-0.10, m_l=30.0, L=21.6),
+    (30.0, 31.3): GainSet(K_vel=0.462183, K_theta=-1.504810, K_theta_dot=4.749752, K_int=-0.10, m_l=30.0, L=31.3),
+    (30.0, 41.0): GainSet(K_vel=0.399341, K_theta=2.405183, K_theta_dot=4.653152, K_int=-0.10, m_l=30.0, L=41.0),
+    (40.0, 12.0): GainSet(K_vel=0.906937, K_theta=2.756381, K_theta_dot=3.002251, K_int=-0.10, m_l=40.0, L=12.0),
+    (40.0, 21.6): GainSet(K_vel=0.718338, K_theta=2.216566, K_theta_dot=4.178170, K_int=-0.10, m_l=40.0, L=21.6),
+    (40.0, 31.3): GainSet(K_vel=0.566707, K_theta=3.179175, K_theta_dot=5.557790, K_int=-0.10, m_l=40.0, L=31.3),
+    (40.0, 41.0): GainSet(K_vel=0.528542, K_theta=-0.089243, K_theta_dot=7.056531, K_int=-0.10, m_l=40.0, L=41.0),
 }
 
 # Bridge System Gains (m_t = 17.90 lbm)

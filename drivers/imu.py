@@ -60,7 +60,7 @@ I2C_TIMEOUT_IOCTL = 0x0702
 I2C_TIMEOUT_VALUE = 2
 
 # Axis remapping: chip axis index -> crane frame [X, Y, Z]
-AXIS_REMAP = [0, 1, 2]
+AXIS_REMAP = [2, 1, 0]
 AXIS_SIGN  = [1, 1, 1]
 
 
