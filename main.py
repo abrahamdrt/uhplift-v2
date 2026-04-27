@@ -391,8 +391,8 @@ class CraneController:
         # self.state.L_current = max(L_HOME, min(L_MAX, L_HOME - pos_h))
 
         # --- VALIDATION HACK: FORCE GAIN SCHEDULER STATE ---
-        self.state.L_current = 12.0  # <-- CHANGE THIS to match physical test length
-        self.config.m_l = 20.3       # <-- CHANGE THIS to match physical test mass
+        self.state.L_current = 13.25  # <-- CHANGE THIS to match physical test length
+        self.config.m_l = 12.05       # <-- CHANGE THIS to match physical test mass
         # IMU
         if self.imu:
             accel, gyro = self.imu.read()
