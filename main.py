@@ -77,7 +77,6 @@ ENC_IPC = {
 L_HOME = 12.0
 L_MAX  = 41.138
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Encoder Bus — 4x LS7366R on SPI0 with software chip selects
 # ══════════════════════════════════════════════════════════════════════════════
@@ -196,7 +195,7 @@ class CraneController:
         self.comp_z = ComplementaryFilter(alpha=0.98, dt=dt)
         self.tdot_lpf_x = LowPassFilter(10.0, dt)
         self.tdot_lpf_z = LowPassFilter(10.0, dt)
-        self.theta_deadband_rad = np.radians(1.00)
+        self.theta_deadband_rad = np.radians(0.2)
 
         # Reference generators
         self.ref_bridge  = ManualModeGenerator(v_max=config.bridge.v_target,
@@ -372,20 +371,28 @@ class CraneController:
         self.zero_bridge(); self.zero_trolley(); self.home_hoist()
 
     # ── Sensor Reading ───────────────────────────────────────────────────
-
     def read_sensors(self):
         pos_t = self.encoder_bus.read_position("trolley")
         pos_b = self.encoder_bus.read_position("bridge")
-        pos_h = self.encoder_bus.read_position("hoist")
-        self.state.x_trolley = pos_t; self.state.x_bridge = pos_b
+
+        # --- VALIDATION HACK: HOIST ENCODER OFFLINE ---
+        # Comment out the real read so it doesn't hang or throw bad SPI data:
+        # pos_h = self.encoder_bus.read_position("hoist")
+        pos_h = 0.0 # Dummy value to prevent variable reference errors
+
+        self.state.x_trolley = pos_t
+        self.state.x_bridge = pos_b
         self.state.x_hoist = pos_h
         self.state.v_trolley = self.vel_est_trolley.update(pos_t)
         self.state.v_bridge  = self.vel_est_bridge.update(pos_b)
         self.state.v_hoist   = self.vel_est_hoist.update(pos_h)
-
         # Hoist -> dynamic L
-        self.state.L_current = max(L_HOME, min(L_MAX, L_HOME - pos_h))
+        # Comment out the dynamic calculation:
+        # self.state.L_current = max(L_HOME, min(L_MAX, L_HOME - pos_h))
 
+        # --- VALIDATION HACK: FORCE GAIN SCHEDULER STATE ---
+        self.state.L_current = 12.0  # <-- CHANGE THIS to match physical test length
+        self.config.m_l = 20.3       # <-- CHANGE THIS to match physical test mass
         # IMU
         if self.imu:
             accel, gyro = self.imu.read()
@@ -395,19 +402,16 @@ class CraneController:
             # Trolley sway theta_z: ZY plane, roll
             tz_acc = np.arctan2(accel[2], accel[1])
             tz_dot_raw = gyro[0]
-
             self.state.theta_x = self.comp_x.update(tx_dot_raw, tx_acc)
             self.state.theta_z = self.comp_z.update(tz_dot_raw, tz_acc)
             self.state.theta_x_dot = self.tdot_lpf_x.update(tx_dot_raw)
             self.state.theta_z_dot = self.tdot_lpf_z.update(tz_dot_raw)
             self.state.theta_x_raw = self.state.theta_x
             self.state.theta_z_raw = self.state.theta_z
-
             if abs(self.state.theta_x) < self.theta_deadband_rad:
                 self.state.theta_x = 0.0; self.state.theta_x_dot = 0.0
             if abs(self.state.theta_z) < self.theta_deadband_rad:
                 self.state.theta_z = 0.0; self.state.theta_z_dot = 0.0
-
         # Gain scheduling
         if abs(self.state.L_current - self._last_gain_L) > 1.0 and self.controller:
             self._last_gain_L = self.state.L_current
@@ -415,9 +419,9 @@ class CraneController:
             try:
                 g = get_gains(self.active_mode, self.config.m_l, self.config.L)
                 self.controller.set_gains(g)
-                print(f"[GAINS] L={self.config.L:.1f}")
+                print(f"[GAINS] L={self.config.L:.1f} m_l={self.config.m_l:.1f}") # Added mass to print for sanity check
             except ValueError:
-                print(f"[GAINS] No match for L={self.config.L:.1f}")
+                print(f"[GAINS] No match for L={self.config.L:.1f}") 
 
     # ── HMI ──────────────────────────────────────────────────────────────
 
@@ -583,40 +587,37 @@ class CraneController:
             self.state.fault_code = 2; return False
         return True
 
-    # ── Logging ──────────────────────────────────────────────────────────
-
     def _open_log(self):
         if not self.log_csv: return
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         d = os.path.join(os.getcwd(), "logs"); os.makedirs(d, exist_ok=True)
-        p = os.path.join(d, f"run_{ts}.csv")
+        # Added 'trolley_val' to the filename so you know these are the focused runs
+        p = os.path.join(d, f"run_trolley_val_{ts}.csv") 
         self._csv_file = open(p, 'w', newline='')
         self._csv_writer = csv.writer(self._csv_file)
+        
+        # Streamlined header: Time, Mode, Trolley Kinematics, Trolley Sway, Sanity Checks
         self._csv_writer.writerow([
-            "t_s","mode",
-            "x_bridge","v_bridge","v_ref_bridge","v_cmd_bridge","F_bridge",
-            "x_trolley","v_trolley","v_ref_trolley","v_cmd_trolley","F_trolley",
-            "x_hoist","v_hoist","v_ref_hoist","L_current",
-            "theta_x_deg","theta_x_dot","theta_x_raw_deg",
-            "theta_z_deg","theta_z_dot","theta_z_raw_deg","loop_ms"])
+            "t_s", "mode",
+            "x_trolley", "v_trolley", "v_ref_trolley", "v_cmd_trolley", "F_trolley",
+            "theta_z_deg", "theta_z_dot", "theta_z_raw_deg",
+            "L_current", "loop_ms"
+        ])
         print(f"[LOG] -> {p}")
 
     def _log_tick(self):
         if not self._csv_writer: return
         s = self.state; t = time.time() - self._t0
-        mm = {0:"DISABLED",1:"MANUAL",2:"AUTO",4:"FAULT"}
+        mm = {0:"DISABLED", 1:"MANUAL", 2:"AUTO", 4:"FAULT"}
+        
+        # Streamlined data row matching the new header
         self._csv_writer.writerow([
             f"{t:.4f}", mm.get(s.mode,"?"),
-            f"{s.x_bridge:.4f}",f"{s.v_bridge:.4f}",
-            f"{s.v_ref_bridge:.4f}",f"{s.v_cmd_bridge:.4f}",f"{s.F_bridge:.4f}",
-            f"{s.x_trolley:.4f}",f"{s.v_trolley:.4f}",
-            f"{s.v_ref_trolley:.4f}",f"{s.v_cmd_trolley:.4f}",f"{s.F_trolley:.4f}",
-            f"{s.x_hoist:.4f}",f"{s.v_hoist:.4f}",
-            f"{s.v_ref_hoist:.4f}",f"{s.L_current:.2f}",
-            f"{s.theta_x*180/math.pi:.4f}",f"{s.theta_x_dot:.4f}",
-            f"{s.theta_x_raw*180/math.pi:.4f}",
-            f"{s.theta_z*180/math.pi:.4f}",f"{s.theta_z_dot:.4f}",
-            f"{s.theta_z_raw*180/math.pi:.4f}",f"{s.loop_time_ms:.2f}"])
+            f"{s.x_trolley:.4f}", f"{s.v_trolley:.4f}", 
+            f"{s.v_ref_trolley:.4f}", f"{s.v_cmd_trolley:.4f}", f"{s.F_trolley:.4f}",
+            f"{s.theta_z*180/math.pi:.4f}", f"{s.theta_z_dot:.4f}", f"{s.theta_z_raw*180/math.pi:.4f}",
+            f"{s.L_current:.2f}", f"{s.loop_time_ms:.2f}"
+        ])
 
     def _close_log(self):
         if self._csv_file:
@@ -716,7 +717,7 @@ def test_sensors(sim=False):
     imu = MPU6050(simulation_mode=sim)
     if imu.initialize():
         imu.calibrate(50, 10)
-        for _ in range(10):
+        for _ in range(1000):
             a, g = imu.read()
             tx=math.degrees(math.atan2(a[0],a[1]))
             tz=math.degrees(math.atan2(a[2],a[1]))
