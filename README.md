@@ -71,9 +71,7 @@ Units throughout: **lbm, inches, seconds**.
 | Bridge | 23 | 24 | 25 | 7 (primary), 12 (diag) |
 | Hoist | 5 | 6 | 13 | 16 |
 
-> ⚠️ **GPIO 16 conflict:** GPIO 16 is shared between the hoist encoder CS and the brake relay. The brake is wired to GPIO 26. Verify physical wiring matches `PINS` in `main.py` before powering on.
-
-> ⚠️ **Relay polarity:** Motor enable relays (K1/K2/K3) are wired to NO terminals (active-HIGH). The hoist brake relay (K4) is wired to NC — opposite polarity. This is handled in software but must be respected if the relay board is rewired.
+> **Relay polarity:** Motor enable relays (K1/K2/K3) are wired to NO terminals (active-HIGH). The hoist brake relay (K4) is wired to NC — opposite polarity. This is handled in software but must be respected if the relay board is rewired.
 
 ---
 
